@@ -1,10 +1,8 @@
-﻿// Program.cs — ESSS DZ Bot (pro, single-file)
+﻿// Program.cs — ESSS DZ Bot (pro, single-file, fixed lang switch + modern navbar)
 // TargetFramework: net8.0
 // NuGet: Telegram.Bot (22.3.0)
 // Run with: TELEGRAM_BOT_TOKEN=xxxxx dotnet run
 
-using System.Globalization;
-using System.Net.Http.Headers;
 using System.Text;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
@@ -20,18 +18,12 @@ public class Program
     // --- Runtime config ---
     private static readonly string BotToken =
         Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN")
-        ?? "8409133925:AAFJ-ExOjEKREIgrtIkwhjjsMZxp7Y_4gR0"; // <— safer than hardcoding
+        ?? "8409133925:AAFJ-ExOjEKREIgrtIkwhjjsMZxp7Y_4gR0"; // avoid shipping hard-coded tokens
 
     // --- Minimal persistence (memory) ---
-    private static readonly Dictionary<long, string> UserLang = new();          // chatId -> "en|fr|ar"
-    private static readonly Dictionary<long, UserInfo> Users = new();           // userId -> info
-    private static readonly HashSet<long> Admins = new();                       // optional: add your chat IDs
-
-    // --- HTTP for link health / future fetches (kept simple) ---
-    private static readonly HttpClient Http = new()
-    {
-        Timeout = TimeSpan.FromSeconds(10)
-    };
+    // Store both per-chat language (what the chat sees) and per-user profile language.
+    private static readonly Dictionary<long, string> UserLangByChat = new(); // chatId -> "en|fr|ar"
+    private static readonly Dictionary<long, UserInfo> Users = new();        // userId -> info
 
     // --- Supported languages ---
     private static readonly string[] Langs = ["en", "fr", "ar"];
@@ -39,18 +31,14 @@ public class Program
     // --- School links (official / authoritative) ---
     private static class Links
     {
-        public const string Website = "https://www.esss.dz/"; // site officiel (can be intermittently slow)
-        public const string Inscription = "https://inscription.esss.dz/candidat/inscription"; // portail concours
-        public const string MinistryNews = "https://www.mtess.gov.dz/"; // contexte général
+        public const string Website = "https://www.esss.dz/"; // official site
+        public const string Inscription = "https://inscription.esss.dz/candidat/inscription"; // concours portal
     }
 
-    // --- Canonical admissions (from your PDF 2025–2026) ---
-    // Source: "مسابقة الالتحاق... 2025-2026" (uploaded). Keep this centralized.
+    // --- Admissions data (summary; align with PDF you provided) ---
     private static readonly AdmissionsData Admissions = new();
 
-    // --- Translations (concise, bot-optimized) ---
-    private static Dictionary<string, T> TStr<T>() where T : notnull => new();
-
+    // --- Translations ---
     private static readonly Dictionary<string, Dictionary<string, string>> Txt = new()
     {
         // English
@@ -68,24 +56,23 @@ public class Program
             ["concours_header"] = "National Entrance Competition (Master, 2025–2026)",
             ["concours_phases"] =
                 "Selection in two phases:\n" +
-                "1) Ranking (document review): degree match with the chosen specialty + last academic year average (weighting applies).\n" +
+                "1) Ranking (document review): degree match with the chosen specialty + last academic year average (weighted).\n" +
                 "2) Exams: Written, then oral for shortlisted candidates.",
             ["eligibility"] =
-                "Eligibility (degree alignment examples):\n" +
+                "Eligibility (examples):\n" +
                 "• Social Protection Law: Bachelor in Law/Political Science (etc.)\n" +
-                "• Administration & HR: Economics, Management, Finance, Accounting, HR, etc.\n" +
-                "• Info Systems & Digital: CS, IS, Software Eng., Applied Math, Web/IS, etc.\n" +
+                "• Admin & HR: Economics, Management, Finance, Accounting, HR, etc.\n" +
+                "• IS & Digital: CS, IS, Software Eng., Applied Math, Web/IS, etc.\n" +
                 "• Risk & Finance: Math/Stats/Actuarial/OR; also Economics/Management (per table).",
             ["dossier"] =
-                "Required documents (upload as a single merged file at registration; originals at final enrollment):\n" +
+                "Required documents (merge into a single file when registering online; originals at final enrollment):\n" +
                 "• Baccalaureate transcript\n" +
-                "• Degree (Licence/Master/Engineer) + transcript of the last year + diploma supplement\n" +
+                "• Degree (Licence/Master/Engineer) + last-year transcript + diploma supplement\n" +
                 "• National ID, Birth certificate",
             ["calendar"] = "Competition Calendar (2025–2026):",
             ["contact"] = "Contact: Phone 023 06 76 16 — Email contact@esss.dz",
             ["choose_lang"] = "Please pick your language:",
             ["picked_lang"] = "Language updated ✅",
-            ["menu_main"] = "Main Menu",
             ["menu_about"] = "ℹ️ About",
             ["menu_programs"] = "📚 Programs",
             ["menu_concours"] = "📝 Concours (Master)",
@@ -96,6 +83,7 @@ public class Program
             ["help"] = "Commands:\n/start – menu\n/help – this help\n/lang – change language\n/about /programs /concours /calendar /contact /website",
             ["link_inscription"] = "Register online (official portal)",
             ["link_website"] = "Open official website",
+            ["home"] = "🏠 Home",
         },
 
         // Français
@@ -113,16 +101,16 @@ public class Program
             ["concours_header"] = "Concours National d’accès (Master, 2025–2026)",
             ["concours_phases"] =
                 "Sélection en deux phases :\n" +
-                "1) Classement (dossier) : adéquation diplôme/spécialité + moyenne de l’année universitaire (pondérations).\n" +
+                "1) Classement (dossier) : adéquation diplôme/spécialité + moyenne de l’année universitaire (pondérée).\n" +
                 "2) Épreuves : écrit puis oral pour les admissibles.",
             ["eligibility"] =
-                "Éligibilité (exemples d’adéquation) :\n" +
+                "Éligibilité (exemples) :\n" +
                 "• Droit de la Protection Sociale : Licence en Droit/Sciences politiques (etc.)\n" +
                 "• Administration & RH : Économie, Gestion, Finance, Comptabilité, RH, etc.\n" +
                 "• SI & Digital : Info, SI, Génie logiciel, Maths appliquées, Web/SI, etc.\n" +
                 "• Risque & Finance : Maths/Stats/Actuariat/RO ; aussi Économie/Gestion (selon tableau).",
             ["dossier"] =
-                "Dossier (à téléverser en un seul fichier fusionné lors de l’inscription ; originaux lors de l’inscription finale) :\n" +
+                "Dossier (à téléverser en un seul fichier fusionné lors de l’inscription en ligne ; originaux lors de l’inscription finale) :\n" +
                 "• Relevé du Bac\n" +
                 "• Diplôme (Licence/Master/Ingénieur) + relevé de la dernière année + supplément au diplôme\n" +
                 "• Carte nationale, Extrait de naissance",
@@ -130,7 +118,6 @@ public class Program
             ["contact"] = "Contact : Tél. 023 06 76 16 — Email contact@esss.dz",
             ["choose_lang"] = "Choisissez votre langue :",
             ["picked_lang"] = "Langue mise à jour ✅",
-            ["menu_main"] = "Menu principal",
             ["menu_about"] = "ℹ️ À propos",
             ["menu_programs"] = "📚 Programmes",
             ["menu_concours"] = "📝 Concours (Master)",
@@ -141,6 +128,7 @@ public class Program
             ["help"] = "Commandes :\n/start – menu\n/help – aide\n/lang – changer de langue\n/about /programs /concours /calendar /contact /website",
             ["link_inscription"] = "S’inscrire en ligne (portail officiel)",
             ["link_website"] = "Ouvrir le site officiel",
+            ["home"] = "🏠 Accueil",
         },
 
         // العربية
@@ -148,7 +136,7 @@ public class Program
         {
             ["welcome"] = "مرحبًا بكم في روبوت ESSS! اختر خيارًا من القائمة.",
             ["about"] =
-                "المدرسة العليا للضمان الاجتماعي (ESSS) مؤسسة عمومية أُنشئت سنة 2012 ببن عكنون – الجزائر. تُقدم تكوينًا أساسيًا ومُستمرًا لفائدة هيئات الضمان الاجتماعي وتُسهم في الدراسات والتعاون الدولي.",
+                "المدرسة العليا للضمان الاجتماعي (ESSS) مؤسسة عمومية أنشئت سنة 2012 ببن عكنون – الجزائر. تقدم تكوينًا أساسيًا ومستمرًا لفائدة هيئات الضمان الاجتماعي وتساهم في الدراسات والتعاون الدولي.",
             ["programs_header"] = "مسارات الماستر المهني (2025–2026):",
             ["programs_list"] =
                 "• قانون الحماية الاجتماعية\n" +
@@ -158,11 +146,11 @@ public class Program
             ["concours_header"] = "مسابقة الالتحاق (ماستر 2025–2026)",
             ["concours_phases"] =
                 "الانتقاء على مرحلتين:\n" +
-                "1) ترتيب بالملف: ملاءمة الشهادة مع التخصص + معدل آخر سنة جامعية (معاملات).\n" +
+                "1) ترتيب بالملف: ملاءمة الشهادة مع التخصص + معدل آخر سنة جامعية (بالمعاملات).\n" +
                 "2) امتحانات: كتابي ثم شفهي للناجحين في الكتابي.",
             ["eligibility"] =
-                "شروط القبول (أمثلة الملاءمة):\n" +
-                "• قانون الحماية الاجتماعية: ليسانس قانون/علوم سياسية (…)\n" +
+                "شروط القبول (أمثلة):\n" +
+                "• قانون الحماية الاجتماعية: ليسانس قانون/علوم سياسية …\n" +
                 "• الإدارة والموارد البشرية: اقتصاد، تسيير، مالية، محاسبة، موارد بشرية…\n" +
                 "• نظم المعلومات والرقمنة: إعلام آلي، نظم معلومات، هندسة برمجيات، رياضيات تطبيقية، ويب/نظم…\n" +
                 "• حساب المخاطرة والمالية: رياضيات/إحصاء/إكتوارية/بحوث عمليات؛ وكذلك اقتصاد/تسيير (حسب الجدول).",
@@ -175,7 +163,6 @@ public class Program
             ["contact"] = "الهاتف: 023 06 76 16 — البريد: contact@esss.dz",
             ["choose_lang"] = "اختر لغتك:",
             ["picked_lang"] = "تم تحديث اللغة ✅",
-            ["menu_main"] = "القائمة الرئيسية",
             ["menu_about"] = "ℹ️ حول",
             ["menu_programs"] = "📚 البرامج",
             ["menu_concours"] = "📝 المسابقة (ماستر)",
@@ -186,6 +173,7 @@ public class Program
             ["help"] = "أوامر:\n/start – القائمة\n/help – المساعدة\n/lang – تغيير اللغة\n/about /programs /concours /calendar /contact /website",
             ["link_inscription"] = "التسجيل الإلكتروني (البوابة الرسمية)",
             ["link_website"] = "فتح الموقع الرسمي",
+            ["home"] = "🏠 الرئيسية",
         }
     };
 
@@ -204,19 +192,10 @@ public class Program
         Console.WriteLine($"ESSS DZ Bot ready as @{me.Username}");
 
         var cts = new CancellationTokenSource();
-        var receiverOptions = new ReceiverOptions
-        {
-            AllowedUpdates = Array.Empty<UpdateType>()
-        };
-
+        var receiverOptions = new ReceiverOptions { AllowedUpdates = Array.Empty<UpdateType>() };
         bot.StartReceiving(HandleUpdateAsync, HandleErrorAsync, receiverOptions, cts.Token);
 
-        Console.CancelKeyPress += (_, e) =>
-        {
-            e.Cancel = true;
-            cts.Cancel();
-        };
-
+        Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
         await Task.Delay(Timeout.Infinite, cts.Token);
     }
 
@@ -233,28 +212,36 @@ public class Program
 
             if (update.Message is not { } msg) return;
 
-            // Track user
+            // Create user profile if first time
             if (msg.From is { } u && !Users.ContainsKey(u.Id))
-                Users[u.Id] = new UserInfo(u.Username ?? "", u.FirstName ?? "", u.LastName ?? "", "en");
+            {
+                var guessed = MapTelegramLang(u.LanguageCode);
+                Users[u.Id] = new UserInfo(u.Username ?? "", u.FirstName ?? "", u.LastName ?? "", guessed);
+                // set chat language the first time too
+                if (!UserLangByChat.ContainsKey(msg.Chat.Id)) UserLangByChat[msg.Chat.Id] = guessed;
+            }
 
-            // Determine language (by chat)
             var chatId = msg.Chat.Id;
-            if (!UserLang.TryGetValue(chatId, out var lang)) lang = "en";
-
-            // Commands or text menu
-            var text = msg.Text?.Trim() ?? "";
+            var lang = UserLangByChat.TryGetValue(chatId, out var v) ? v : "en";
+            var text = (msg.Text ?? "").Trim();
 
             switch (text)
             {
                 case "/start":
-                    await SendWelcome(bot, chatId, lang, ct);
+                    // if no language set for chat, guess it now
+                    if (!UserLangByChat.ContainsKey(chatId))
+                        UserLangByChat[chatId] = GuessLangFromUser(msg.From);
+                    await SendWelcome(bot, chatId, UserLangByChat[chatId], ct);
                     break;
 
                 case "/help":
-                    await bot.SendTextMessageAsync(chatId, Txt[lang]["help"], cancellationToken: ct);
+                    await bot.SendTextMessageAsync(chatId, Txt[lang]["help"], replyMarkup: NavBar(lang), cancellationToken: ct);
                     break;
 
                 case "/lang":
+                case "🔄 Language":
+                case "🔄 Langue":
+                case "🔄 تغيير اللغة":
                     await SendLangPicker(bot, chatId, lang, ct);
                     break;
 
@@ -294,16 +281,13 @@ public class Program
                 case "/website":
                 case "🌐 Website":
                 case "🌐 Site Web":
-                case "🌐 موقع الويب":
+                case "🌐 الموقع":
                     await SendWebsite(bot, chatId, lang, ct);
                     break;
 
                 default:
-                    // If first time, show language picker; otherwise show menu
-                    if (!UserLang.ContainsKey(chatId))
-                        await SendLangPicker(bot, chatId, "en", ct);
-                    else
-                        await SendWelcome(bot, chatId, lang, ct);
+                    // Show menu again
+                    await SendWelcome(bot, chatId, lang, ct);
                     break;
             }
         }
@@ -321,28 +305,51 @@ public class Program
 
         if (data.StartsWith("lang:"))
         {
-            var lang = data["lang:".Length..];
-            if (!Langs.Contains(lang)) lang = "en";
-            UserLang[chatId] = lang;
-           if (Users.TryGetValue(cb.From.Id, out var info))
-               Users[cb.From.Id] = info with { Language = lang };
+            var newLang = data["lang:".Length..];
+            if (!Langs.Contains(newLang)) newLang = "en";
 
-            await bot.AnswerCallbackQueryAsync(cb.Id, Txt[lang]["picked_lang"], cancellationToken: ct);
+            UserLangByChat[chatId] = newLang;
+            if (Users.TryGetValue(cb.From.Id, out var info))
+                Users[cb.From.Id] = info with { Language = newLang };
+
+            await bot.AnswerCallbackQueryAsync(cb.Id, Txt[newLang]["picked_lang"], cancellationToken: ct);
+            // Refresh to show the new-language menu right away
+            await SendWelcome(bot, chatId, newLang, ct);
+            return;
+        }
+
+        if (data == "goto:home")
+        {
+            var lang = UserLangByChat.TryGetValue(chatId, out var v) ? v : "en";
             await SendWelcome(bot, chatId, lang, ct);
             return;
         }
 
-        if (data == "open:inscription")
+        if (data == "goto:programs")
         {
-            await bot.AnswerCallbackQueryAsync(cb.Id, "Opening portal…", cancellationToken: ct);
-            await bot.SendTextMessageAsync(chatId, Links.Inscription, cancellationToken: ct);
+            var lang = UserLangByChat.TryGetValue(chatId, out var v) ? v : "en";
+            await SendPrograms(bot, chatId, lang, ct);
             return;
         }
 
-        if (data == "open:website")
+        if (data == "goto:concours")
         {
-            await bot.AnswerCallbackQueryAsync(cb.Id, "Opening site…", cancellationToken: ct);
-            await bot.SendTextMessageAsync(chatId, Links.Website, cancellationToken: ct);
+            var lang = UserLangByChat.TryGetValue(chatId, out var v) ? v : "en";
+            await SendConcours(bot, chatId, lang, ct);
+            return;
+        }
+
+        if (data == "goto:calendar")
+        {
+            var lang = UserLangByChat.TryGetValue(chatId, out var v) ? v : "en";
+            await SendCalendar(bot, chatId, lang, ct);
+            return;
+        }
+
+        if (data == "goto:lang")
+        {
+            var lang = UserLangByChat.TryGetValue(chatId, out var v) ? v : "en";
+            await SendLangPicker(bot, chatId, lang, ct);
             return;
         }
     }
@@ -350,8 +357,12 @@ public class Program
     // === VIEWS ===
     private static async Task SendWelcome(ITelegramBotClient bot, long chatId, string lang, CancellationToken ct)
     {
-        var kb = MainMenu(lang);
-        await bot.SendTextMessageAsync(chatId, Txt[lang]["welcome"], replyMarkup: kb, cancellationToken: ct);
+        await bot.SendTextMessageAsync(
+            chatId,
+            Txt[lang]["welcome"],
+            replyMarkup: NavBar(lang),
+            cancellationToken: ct
+        );
     }
 
     private static async Task SendLangPicker(ITelegramBotClient bot, long chatId, string lang, CancellationToken ct)
@@ -374,7 +385,7 @@ public class Program
         b.AppendLine(Txt[lang]["about"]);
         b.AppendLine();
         b.AppendLine($"• {Txt[lang]["link_website"]}: {Links.Website}");
-        await bot.SendTextMessageAsync(chatId, b.ToString(), cancellationToken: ct);
+        await bot.SendTextMessageAsync(chatId, b.ToString(), replyMarkup: NavBar(lang), cancellationToken: ct);
     }
 
     private static async Task SendPrograms(ITelegramBotClient bot, long chatId, string lang, CancellationToken ct)
@@ -382,7 +393,7 @@ public class Program
         var b = new StringBuilder();
         b.AppendLine(Txt[lang]["programs_header"]);
         b.AppendLine(Txt[lang]["programs_list"]);
-        await bot.SendTextMessageAsync(chatId, b.ToString(), cancellationToken: ct);
+        await bot.SendTextMessageAsync(chatId, b.ToString(), replyMarkup: NavBar(lang), cancellationToken: ct);
     }
 
     private static async Task SendConcours(ITelegramBotClient bot, long chatId, string lang, CancellationToken ct)
@@ -402,12 +413,21 @@ public class Program
         b.AppendLine($"<b>{Title(lang, "Portal")}</b>");
         b.AppendLine($"{Txt[lang]["link_inscription"]}: {Links.Inscription}");
 
+        // Modern inline navbar + direct URL buttons (no callback needed to open)
         var ikb = new InlineKeyboardMarkup(new[]
         {
             new[]
             {
-                InlineKeyboardButton.WithCallbackData("📝 Portal", "open:inscription"),
-                InlineKeyboardButton.WithCallbackData("🌐 Website", "open:website")
+                InlineKeyboardButton.WithUrl("📝 Portal", Links.Inscription),
+                InlineKeyboardButton.WithUrl("🌐 Website", Links.Website),
+            },
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData("🏠", "goto:home"),
+                InlineKeyboardButton.WithCallbackData("📚", "goto:programs"),
+                InlineKeyboardButton.WithCallbackData("📝", "goto:concours"),
+                InlineKeyboardButton.WithCallbackData("🗓️", "goto:calendar"),
+                InlineKeyboardButton.WithCallbackData("🔄", "goto:lang"),
             }
         });
 
@@ -420,50 +440,49 @@ public class Program
         b.AppendLine($"<b>{Txt[lang]["calendar"]}</b>");
         foreach (var item in Admissions.Calendar)
             b.AppendLine($"• {item.Date:dd/MM/yyyy} — {item.Label(lang)}");
-        await bot.SendTextMessageAsync(chatId, b.ToString(), parseMode: ParseMode.Html, cancellationToken: ct);
+        await bot.SendTextMessageAsync(chatId, b.ToString(), parseMode: ParseMode.Html, replyMarkup: NavBar(lang), cancellationToken: ct);
     }
 
     private static async Task SendContact(ITelegramBotClient bot, long chatId, string lang, CancellationToken ct)
     {
-        await bot.SendTextMessageAsync(chatId, Txt[lang]["contact"], cancellationToken: ct);
+        await bot.SendTextMessageAsync(chatId, Txt[lang]["contact"], replyMarkup: NavBar(lang), cancellationToken: ct);
     }
 
     private static async Task SendWebsite(ITelegramBotClient bot, long chatId, string lang, CancellationToken ct)
     {
-        var ikb = new InlineKeyboardMarkup(InlineKeyboardButton.WithCallbackData(Txt[lang]["link_website"], "open:website"));
+        // Use URL button (opens instantly) + show the link text
+        var ikb = new InlineKeyboardMarkup(new[]
+        {
+            new[] { InlineKeyboardButton.WithUrl(Txt[lang]["link_website"], Links.Website) },
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData(Txt[lang]["home"], "goto:home"),
+                InlineKeyboardButton.WithCallbackData(Txt[lang]["menu_programs"], "goto:programs")
+            }
+        });
         await bot.SendTextMessageAsync(chatId, Links.Website, replyMarkup: ikb, cancellationToken: ct);
     }
 
-    private static ReplyKeyboardMarkup MainMenu(string lang)
+    // === SHARED NAVBAR (modern inline menu) ===
+    private static InlineKeyboardMarkup NavBar(string lang) => new(new[]
     {
-        var rows = lang switch
+        new[]
         {
-            "en" => new[]
-            {
-                new[] { new KeyboardButton("ℹ️ About"), new KeyboardButton("📚 Programs") },
-                new[] { new KeyboardButton("📝 Concours (Master)"), new KeyboardButton("🗓️ Calendar") },
-                new[] { new KeyboardButton("📞 Contact"), new KeyboardButton("🌐 Website") },
-                new[] { new KeyboardButton("🔄 Language") }
-            },
-            "fr" => new[]
-            {
-                new[] { new KeyboardButton("ℹ️ À propos"), new KeyboardButton("📚 Programmes") },
-                new[] { new KeyboardButton("📝 Concours (Master)"), new KeyboardButton("🗓️ Calendrier") },
-                new[] { new KeyboardButton("📞 Contact"), new KeyboardButton("🌐 Site Web") },
-                new[] { new KeyboardButton("🔄 Langue") }
-            },
-            "ar" => new[]
-            {
-                new[] { new KeyboardButton("ℹ️ حول"), new KeyboardButton("📚 البرامج") },
-                new[] { new KeyboardButton("📝 المسابقة (ماستر)"), new KeyboardButton("🗓️ الرزنامة") },
-                new[] { new KeyboardButton("📞 اتصال"), new KeyboardButton("🌐 الموقع") },
-                new[] { new KeyboardButton("🔄 تغيير اللغة") }
-            },
-            _ => throw new ArgumentOutOfRangeException(nameof(lang))
-        };
-
-        return new ReplyKeyboardMarkup(rows) { ResizeKeyboard = true };
-    }
+            InlineKeyboardButton.WithCallbackData(Txt[lang]["home"], "goto:home"),
+            InlineKeyboardButton.WithCallbackData(Txt[lang]["menu_programs"], "goto:programs"),
+        },
+        new[]
+        {
+            InlineKeyboardButton.WithCallbackData(Txt[lang]["menu_concours"], "goto:concours"),
+            InlineKeyboardButton.WithCallbackData(Txt[lang]["menu_calendar"], "goto:calendar"),
+        },
+        new[]
+        {
+            // open website directly
+            InlineKeyboardButton.WithUrl(Txt[lang]["menu_website"], Links.Website),
+            InlineKeyboardButton.WithCallbackData(Txt[lang]["menu_lang"], "goto:lang"),
+        }
+    });
 
     private static string Title(string lang, string key) => (lang switch
     {
@@ -503,77 +522,45 @@ public class Program
         return Task.CompletedTask;
     }
 
+    // === Helpers ===
+    private static string GuessLangFromUser(User? u)
+    {
+        var guessed = MapTelegramLang(u?.LanguageCode);
+        return Langs.Contains(guessed) ? guessed : "en";
+    }
+
+    private static string MapTelegramLang(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return "en";
+        code = code.ToLowerInvariant();
+        if (code.StartsWith("fr")) return "fr";
+        if (code.StartsWith("ar")) return "ar";
+        return "en";
+    }
+
     // === Data types ===
     private record UserInfo(string Username, string FirstName, string LastName, string Language);
 
     private sealed class AdmissionsData
     {
-        // Seats policy (from PDF): total seats per specialty; reserved quarter for Maghreb/Africa (francophone),
-        // quarter for social security cadres; remaining half for Algerian students outside funds.
         public string SeatsBlurb(string lang) => lang switch
         {
-            "fr" => "Répartition des places : 1/4 pour les pays du Maghreb/Afrique francophone, 1/4 pour les cadres des caisses de sécurité sociale, et 1/2 pour les étudiants algériens hors caisses.",
+            "fr" => "Répartition des places : 1/4 pour le Maghreb/Afrique francophone, 1/4 pour les cadres des caisses de sécurité sociale, et 1/2 pour les étudiants algériens hors caisses.",
             "ar" => "توزيع المقاعد: ربع لبلدان المغرب العربي وإفريقيا الناطقة بالفرنسية، وربع لإطارات صناديق الضمان الاجتماعي، والنصف للطلبة الجزائريين خارج الصناديق.",
             _    => "Seats allocation: 1/4 for Maghreb/Africa (French-speaking), 1/4 for social-security cadres, and 1/2 for Algerian students outside the funds."
         };
 
-        // Official calendar (from PDF page with dates)
         public IReadOnlyList<CalItem> Calendar { get; } = new[]
         {
-            new CalItem(new DateTime(2025,10,13), new()
-            {
-                ["en"] = "Online registration opens (through the portal)",
-                ["fr"] = "Ouverture des inscriptions en ligne (via le portail)",
-                ["ar"] = "فتح التسجيلات الإلكترونية (عبر البوابة)"
-            }),
-            new CalItem(new DateTime(2025,10,24), new()
-            {
-                ["en"] = "Online registration closes",
-                ["fr"] = "Clôture des inscriptions en ligne",
-                ["ar"] = "غلق التسجيلات الإلكترونية"
-            }),
-            new CalItem(new DateTime(2025,10,26), new()
-            {
-                ["en"] = "Admitted list for written exam published",
-                ["fr"] = "Affichage de la liste des admis à l’écrit",
-                ["ar"] = "الإعلان عن قائمة المقبولين للاختبار الكتابي"
-            }),
-            new CalItem(new DateTime(2025,11,08), new()
-            {
-                ["en"] = "Written exam",
-                ["fr"] = "Épreuve écrite",
-                ["ar"] = "الاختبار الكتابي"
-            }),
-            new CalItem(new DateTime(2025,11,12), new()
-            {
-                ["en"] = "Deliberations & results of written exam",
-                ["fr"] = "Délibérations & résultats de l’écrit",
-                ["ar"] = "المداولات ونشر نتائج الكتابي"
-            }),
-            new CalItem(new DateTime(2025,11,17), new()
-            {
-                ["en"] = "Oral exam",
-                ["fr"] = "Épreuve orale",
-                ["ar"] = "الاختبار الشفهي"
-            }),
-            new CalItem(new DateTime(2025,11,18), new()
-            {
-                ["en"] = "Final results (school + website)",
-                ["fr"] = "Résultats finaux (école + site)",
-                ["ar"] = "النتائج النهائية (بالمدرسة وعلى الموقع)"
-            }),
-            new CalItem(new DateTime(2025,11,20), new()
-            {
-                ["en"] = "Final pedagogical registration",
-                ["fr"] = "Inscription pédagogique finale",
-                ["ar"] = "التسجيل البيداغوجي النهائي"
-            }),
-            new CalItem(new DateTime(2025,11,23), new()
-            {
-                ["en"] = "Start of academic year (Master 1, 2025/2026)",
-                ["fr"] = "Rentrée M1 (2025/2026)",
-                ["ar"] = "انطلاق الموسم الجامعي (ماستر 1، 2025/2026)"
-            }),
+            new CalItem(new DateTime(2025,10,13), new() { ["en"] = "Online registration opens (portal)", ["fr"] = "Ouverture des inscriptions (portail)", ["ar"] = "فتح التسجيلات (البوابة)" }),
+            new CalItem(new DateTime(2025,10,24), new() { ["en"] = "Online registration closes", ["fr"] = "Clôture des inscriptions", ["ar"] = "غلق التسجيلات" }),
+            new CalItem(new DateTime(2025,10,26), new() { ["en"] = "Admitted list (written exam)", ["fr"] = "قائمة المقبولين للكتابي", ["ar"] = "قائمة المقبولين للكتابي" }),
+            new CalItem(new DateTime(2025,11,08), new() { ["en"] = "Written exam", ["fr"] = "Épreuve écrite", ["ar"] = "الاختبار الكتابي" }),
+            new CalItem(new DateTime(2025,11,12), new() { ["en"] = "Deliberations & results", ["fr"] = "المداولات والنتائج", ["ar"] = "المداولات والنتائج" }),
+            new CalItem(new DateTime(2025,11,17), new() { ["en"] = "Oral exam", ["fr"] = "Épreuve orale", ["ar"] = "الاختبار الشفهي" }),
+            new CalItem(new DateTime(2025,11,18), new() { ["en"] = "Final results", ["fr"] = "النتائج النهائية", ["ar"] = "النتائج النهائية" }),
+            new CalItem(new DateTime(2025,11,20), new() { ["en"] = "Final pedagogical registration", ["fr"] = "Inscription pédagogique finale", ["ar"] = "التسجيل البيداغوجي النهائي" }),
+            new CalItem(new DateTime(2025,11,23), new() { ["en"] = "Start of academic year (M1 2025/26)", ["fr"] = "Rentrée M1 (2025/26)", ["ar"] = "انطلاق الموسم الجامعي (ماستر 1، 2025/26)" }),
         };
 
         public sealed record CalItem(DateTime Date, Dictionary<string,string> Labels)

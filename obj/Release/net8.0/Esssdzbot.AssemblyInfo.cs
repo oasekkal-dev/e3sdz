@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Esssdzbot")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+cde733e17e96299f8bf2d5e8b10951926eb1a75e")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+aeeac783c26e72e82866434db05d69209fac0baa")]
 [assembly: System.Reflection.AssemblyProductAttribute("Esssdzbot")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Esssdzbot")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
