@@ -34,4 +34,3 @@ D:\Work\programming_projects\C# dotnet\Esssdzbot\obj\Debug\net8.0\refint\Esssdzb
 D:\Work\programming_projects\C# dotnet\Esssdzbot\obj\Debug\net8.0\Esssdzbot.pdb
 D:\Work\programming_projects\C# dotnet\Esssdzbot\obj\Debug\net8.0\Esssdzbot.genruntimeconfig.cache
 D:\Work\programming_projects\C# dotnet\Esssdzbot\obj\Debug\net8.0\ref\Esssdzbot.dll
-D:\Work\programming_projects\C# dotnet\Esssdzbot\bin\Debug\net8.0\System.Text.Json.dll
