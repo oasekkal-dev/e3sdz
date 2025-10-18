@@ -60,7 +60,7 @@ public class Program
                 "2) Exams: Written, then oral for shortlisted candidates.",
             ["eligibility"] =
                 "Eligibility (examples):\n" +
-                "• Social Protection Law: Bachelor in Law/Political Science (etc.)\n" +
+                "• Social Protection Law: Bachelor in Law\n" +
                 "• Admin & HR: Economics, Management, Finance, Accounting, HR, etc.\n" +
                 "• IS & Digital: CS, IS, Software Eng., Applied Math, Web/IS, etc.\n" +
                 "• Risk & Finance: Math/Stats/Actuarial/OR; also Economics/Management (per table).",
@@ -105,7 +105,7 @@ public class Program
                 "2) Épreuves : écrit puis oral pour les admissibles.",
             ["eligibility"] =
                 "Éligibilité (exemples) :\n" +
-                "• Droit de la Protection Sociale : Licence en Droit/Sciences politiques (etc.)\n" +
+                "• Droit de la Protection Sociale : Licence en Droit \n" +
                 "• Administration & RH : Économie, Gestion, Finance, Comptabilité, RH, etc.\n" +
                 "• SI & Digital : Info, SI, Génie logiciel, Maths appliquées, Web/SI, etc.\n" +
                 "• Risque & Finance : Maths/Stats/Actuariat/RO ; aussi Économie/Gestion (selon tableau).",
@@ -150,7 +150,7 @@ public class Program
                 "2) امتحانات: كتابي ثم شفهي للناجحين في الكتابي.",
             ["eligibility"] =
                 "شروط القبول (أمثلة):\n" +
-                "• قانون الحماية الاجتماعية: ليسانس قانون/علوم سياسية …\n" +
+                "• قانون الحماية الاجتماعية: ليسانس قانون …\n" +
                 "• الإدارة والموارد البشرية: اقتصاد، تسيير، مالية، محاسبة، موارد بشرية…\n" +
                 "• نظم المعلومات والرقمنة: إعلام آلي، نظم معلومات، هندسة برمجيات، رياضيات تطبيقية، ويب/نظم…\n" +
                 "• حساب المخاطرة والمالية: رياضيات/إحصاء/إكتوارية/بحوث عمليات؛ وكذلك اقتصاد/تسيير (حسب الجدول).",
