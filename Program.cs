@@ -18,7 +18,7 @@ public class Program
     // --- Runtime config ---
     private static readonly string BotToken =
         Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN")
-        ?? "8409133925:AAFJ-ExOjEKREIgrtIkwhjjsMZxp7Y_4gR0"; // avoid shipping hard-coded tokens
+        ?? "Telegram_Bot_Token"; // avoid shipping hard-coded tokens
 
     // --- Minimal persistence (memory) ---
     // Store both per-chat language (what the chat sees) and per-user profile language.
