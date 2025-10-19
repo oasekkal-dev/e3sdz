@@ -178,6 +178,7 @@ public class Program
     };
 
     // === ENTRYPOINT ===
+    //
     public static async Task Main()
     {
         if (BotToken == "REPLACE_ME_WITH_ENV")
