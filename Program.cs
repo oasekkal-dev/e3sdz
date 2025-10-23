@@ -14,7 +14,8 @@ using Telegram.Bot.Types.ReplyMarkups;
 namespace Esssbot;
 
 public class Program
-{
+{//
+    //
     // --- Runtime config ---
     private static readonly string BotToken =
         Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN")
